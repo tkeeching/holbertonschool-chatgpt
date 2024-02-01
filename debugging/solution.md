@@ -251,71 +251,140 @@ def calculate_grade(mark):
 
 Given the following python code snippet, could you please review the code and identify any potential OWASP vulnerability?
 
-#### ChatGPT Response
+```code snippet
+def get_customer_daily_sales(customer_code):
+    # Get sql db connection
+    sql_con = get_sql_connection()
 
-The provided code contains a potential security vulnerability related to SQL injection. The vulnerability arises from the way the `customer_code` parameter is directly interpolated into the SQL query string. This can lead to SQL injection attacks if the `customer_code` value is not properly validated or sanitized.
+    # Create a cursor
+    cur = sql_con.cursor()
 
-Here's the vulnerable part of the code:
-c.CustomerCode = '{customer_code}'
+     # Produce query to get customer average sales
+     query = f"""
+         SELECT
+                o.CustomerName,
+                CAST(o.OrderDt AS DATE) AS OrderDate,
+                SUM(o.OrderTotal) AS DailyTotal
+            FROM dbo.Orders AS o
+            INNER JOIN dbo.Customers AS c
+                on o.CustomerKey = c.CustomerKey
+            AND c.CustomerCode = '{customer_code}'
+            GROUP BY o.CustomerName, CAST(o.OrderDt as DATE);
+     """
 
-If an attacker provides a malicious `customer_code`, they can manipulate the SQL query and potentially execute unauthorized actions on the database.
+    # Execute the query
+    cur.execute(query)
 
-To address this vulnerability, you should use parameterized queries or prepared statements instead of directly interpolating values into the SQL query string. Parameterized queries help to prevent SQL injection by ensuring that user input is treated as data rather than executable code.
+    # Collect query result
+    result = cur.fetchall()
 
-Here's an example of how to use parameterized queries with the `pyodbc` library, assuming it is being used for database connectivity:
+    # Close the connection
+    sql_con.close()
 
-```python
-query = """
-    SELECT
-        o.CustomerName,
-        CAST(o.OrderDt AS DATE) AS OrderDate,
-        SUM(o.OrderTotal) AS DailyTotal
-    FROM dbo.Orders AS o
-    INNER JOIN dbo.Customers AS c
-        on o.CustomerKey = c.CustomerKey
-    AND c.CustomerCode = ?
-    GROUP BY o.CustomerName, CAST(o.OrderDt as DATE);
-"""
-
-# Execute the query with the parameter
-cur.execute(query, (customer_code,))
+    # Return the result
+    return result
 ```
 
-By using `?` as a placeholder and passing the `customer_code` as a parameter to the `execute` method, you eliminate the risk of SQL injection. This ensures that the `customer_code` value is treated as a parameter rather than part of the SQL statement.
+#### ChatGPT Response
+
+The code snippet you provided is vulnerable to SQL injection, which is listed as a critical security risk by OWASP (Open Web Application Security Project).
+
+The vulnerability lies in the construction of the SQL query string using string formatting with the `customer_code` variable directly embedded into the query. If an attacker can control the value of `customer_code`, they can manipulate the SQL query to execute arbitrary SQL commands, potentially leading to unauthorized access to data or even data manipulation or deletion.
+
+To mitigate this vulnerability, you should use parameterized queries or prepared statements. Here's how you can modify the code to use parameterized queries:
+
+```python
+def get_customer_daily_sales(customer_code):
+    # Get sql db connection
+    sql_con = get_sql_connection()
+
+    # Create a cursor
+    cur = sql_con.cursor()
+
+    # Prepare query with placeholders
+    query = """
+        SELECT
+            o.CustomerName,
+            CAST(o.OrderDt AS DATE) AS OrderDate,
+            SUM(o.OrderTotal) AS DailyTotal
+        FROM dbo.Orders AS o
+        INNER JOIN dbo.Customers AS c
+            on o.CustomerKey = c.CustomerKey
+        AND c.CustomerCode = %s
+        GROUP BY o.CustomerName, CAST(o.OrderDt as DATE);
+    """
+
+    # Execute the query with parameter
+    cur.execute(query, (customer_code,))
+
+    # Collect query result
+    result = cur.fetchall()
+
+    # Close the connection
+    sql_con.close()
+
+    # Return the result
+    return result
+```
+
+By using parameterized queries, you separate the SQL query logic from the data, preventing the possibility of SQL injection attacks. The parameterized query ensures that the `customer_code` value is treated as data and not as part of the SQL command structure, thus safeguarding against SQL injection vulnerabilities.
 
 #### Prompt
 
-Can you explain the remaining OWASP Top 10 issue and provide an example for each of them?
+Can you please explain the remaining OWASP Top 10 issues and provide some example for each?
 
 #### ChatGPT Response
 
-Certainly! The OWASP Top 10 is a list of the most critical web application security risks. Here are the remaining issues along with brief explanations and examples:
+Sure, I can provide an overview of the remaining OWASP Top 10 issues along with examples for each:
 
-6. Security Misconfiguration:
-Description: Security misconfiguration occurs when security settings are not implemented or configured properly. This can lead to unauthorized access, exposure of sensitive data, or other security issues.
+1. **Broken Authentication**: This refers to any vulnerability that allows attackers to compromise user accounts, passwords, or session tokens, or to exploit other flaws in authentication mechanisms. Examples include:
+   - Weak password policies allowing easy-to-guess passwords.
+   - Lack of multi-factor authentication (MFA), allowing attackers to bypass authentication controls.
+   - Session fixation attacks where an attacker sets a user's session ID, gaining unauthorized access.
 
-Example: Leaving default credentials in production code or misconfiguring file permissions, allowing unauthorized users to access sensitive information.
+2. **Sensitive Data Exposure**: This occurs when sensitive information such as passwords, credit card numbers, or personal data is not adequately protected, allowing unauthorized access. Examples include:
+   - Storing passwords in plaintext instead of hashed form.
+   - Transmitting sensitive data over unencrypted channels.
+   - Failure to implement proper access controls, leading to unauthorized access to sensitive data.
 
-7. Cross-Site Scripting (XSS):
-Description: XSS vulnerabilities arise when an application includes untrusted data on a web page without proper validation or escaping. This can allow attackers to execute malicious scripts in the context of a user's browser.
+3. **XML External Entities (XXE)**: XXE vulnerabilities occur when an application processes XML input containing external entity references in an unsafe manner. Attackers can exploit this to disclose confidential data, execute remote code, or perform denial of service attacks. Examples include:
+   - Including external entities in XML requests to read local files.
+   - Using external entity references to perform server-side request forgery (SSRF) attacks.
+   - Exploiting XXE to exfiltrate sensitive data by reading files accessible to the server.
 
-Example: An attacker injects a script into a web application by inserting malicious code into input fields or URL parameters. When other users view the affected page, the script is executed in their browsers.
+4. **Broken Access Control**: This refers to improper enforcement of restrictions on what authenticated users are allowed to do, such as accessing other users' accounts, modifying other users' data, or changing access rights. Examples include:
+   - Direct object references allowing users to manipulate parameters in URLs to access unauthorized resources.
+   - Insufficient access controls on APIs, allowing unauthorized access to sensitive data or functionality.
+   - Predictable resource locations or identifiers, enabling attackers to access restricted resources.
 
-8. Insecure Deserialization:
-Description: Insecure deserialization occurs when an application deserializes untrusted data without proper validation. This can lead to remote code execution, security bypass, or other attacks.
+5. **Security Misconfiguration**: This occurs when security settings are improperly configured, leading to potential vulnerabilities. Examples include:
+   - Default credentials left unchanged, allowing unauthorized access.
+   - Open ports or services that are not necessary for the application's functionality.
+   - Exposing sensitive information in error messages or debug logs.
 
-Example: An attacker manipulates serialized data sent to an application, exploiting vulnerabilities in the deserialization process to execute arbitrary code.
+6. **Cross-Site Scripting (XSS)**: XSS vulnerabilities allow attackers to inject malicious scripts into web pages viewed by other users. This can lead to the theft of session cookies, defacement of websites, or execution of arbitrary code in the context of the victim's browser. Examples include:
+   - Reflective XSS attacks where user input is immediately echoed back to the browser without proper validation or encoding.
+   - Stored XSS attacks where user input is stored in the application's database and later displayed to other users without proper sanitization.
+   - DOM-based XSS attacks where client-side scripts manipulate the DOM in an unsafe manner.
 
-9. Using Components with Known Vulnerabilities:
-Description: Using outdated or vulnerable third-party components (libraries, frameworks, etc.) can expose an application to known security vulnerabilities.
+7. **Insecure Deserialization**: This refers to vulnerabilities arising from insecure handling of serialized objects, which can lead to remote code execution, injection attacks, or privilege escalation. Examples include:
+   - Deserializing untrusted data from unauthenticated sources, leading to arbitrary code execution.
+   - Lack of integrity checks allowing attackers to modify serialized objects.
+   - Deserialization of attacker-controlled data without proper validation, leading to injection attacks.
 
-Example: An application uses an older version of a library that has a known security flaw. Attackers can exploit this vulnerability to compromise the application.
+8. **Using Components with Known Vulnerabilities**: This occurs when applications use outdated or vulnerable third-party libraries, frameworks, or components, exposing them to known security flaws. Examples include:
+   - Failure to regularly update dependencies, leaving the application vulnerable to known exploits.
+   - Using deprecated or unsupported libraries that no longer receive security patches.
+   - Lack of visibility into the versions of third-party components used in the application.
 
-10. Insufficient Logging and Monitoring:
-Description: Lack of proper logging and monitoring makes it difficult to detect and respond to security incidents. This can result in delayed or ineffective incident response.
+9. **Insufficient Logging and Monitoring**: This refers to the lack of proper logging and monitoring mechanisms, which can hinder detection and response to security incidents. Examples include:
+   - Failure to log important security events such as authentication failures, privilege escalations, or access to sensitive data.
+   - Lack of real-time monitoring for suspicious activities or indicators of compromise.
+   - Inadequate retention of log data, making it difficult to conduct forensic analysis or comply with regulatory requirements.
 
-Example: An application does not log authentication failures, making it challenging to identify and respond to unauthorized access attempts.
-
-Addressing these OWASP Top 10 issues involves adopting secure coding practices, regularly updating dependencies, implementing proper access controls, conducting security assessments, and ensuring proper monitoring and logging mechanisms are in place. Each issue requires a context-specific and layered approach to mitigate potential risks effectively.
+10. **Insufficient Rate Limiting**: This occurs when applications do not enforce rate limits on certain actions, allowing attackers to perform brute force attacks, account takeover, or denial of service. Examples include:
+    - Lack of rate limiting on login attempts, enabling attackers to perform brute force attacks to guess user passwords.
+    - Absence of rate limiting on API endpoints, making the application vulnerable to automated attacks or scraping.
+    - Failure to enforce rate limits on resource-intensive operations, leading to service degradation or denial of service.
 
 ---
